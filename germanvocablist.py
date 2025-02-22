@@ -24,7 +24,7 @@ EXCEL_FILE = "German_Words.xlsx"
 
 
 def get_word_data(word):
-    """Fetches the article and definition of a word from PONS."""
+    """Fetches the article and definitions of a word from PONS."""
     url = f"https://en.pons.com/translate/german-english/{word.lower()}"
     response = requests.get(url)
     
@@ -34,17 +34,41 @@ def get_word_data(word):
 
     soup = BeautifulSoup(response.text, "html.parser")
 
-    # Try to extract the article and definition
+    # Try to extract the article and definitions
     try:
         article_tag = soup.find("span", class_="genus")
         article = article_tag.text.strip() if article_tag else ""
 
-        definition_tag = soup.find("div", class_="entry")
-        definition = definition_tag.find("div", class_="target").text.strip().split("\n")[0] if definition_tag else ""
+        # Exclude "seealso" sections
+        seealso_sections = soup.find_all("div", class_="seealso")
+        for section in seealso_sections:
+            section.decompose()  # Remove the seealso section
 
-        return article, definition
+        definition_tags = soup.find_all("div", class_="translations")
+        definitions = []
+        for tag in definition_tags:
+            target_tag = tag.find_all("div", class_="target", limit=2)
+            for target in target_tag:
+                definition = target.get_text().strip()
+                definitions.append(definition)
+                
+        definitions = list(dict.fromkeys(definitions))  # Remove duplicates
+
+
+        if not definitions:
+            return article, ""
+
+        # Allow user to select the appropriate definition
+        print("Multiple definitions found:")
+        for i, definition in enumerate(definitions, start=1):
+            print(f"{i}. {definition}")
+
+        choice = int(input("Select the appropriate definition (enter the number): ").strip())
+        selected_definition = definitions[choice - 1] if 0 < choice <= len(definitions) else definitions[0]
+
+        return article, selected_definition
     except AttributeError:
-        print("Warning: Could not determine the article or definition.")
+        print("Warning: Could not determine the article or definitions.")
         return "", ""
 
 
