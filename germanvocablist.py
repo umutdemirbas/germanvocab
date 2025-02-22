@@ -1,7 +1,7 @@
 import requests
 from bs4 import BeautifulSoup
 import openpyxl
-from openpyxl.styles import Font, PatternFill
+from openpyxl.styles import Font, PatternFill, Alignment
 import os
 import re
 
@@ -97,9 +97,11 @@ def create_or_load_excel():
         ws = wb.active
         ws.title = "General"
         ws.append(["Word", "Definition"])
-        bold_font = Font(bold=True)
+        bold_font = Font(bold=True, size=16)
+        alignment_center = Alignment(horizontal="center", vertical="center")
         for col in range(1, 3):
             ws.cell(row=1, column=col).font = bold_font
+            ws.cell(row=1, column=col).alignment = alignment_center
 
         # Create sheets for each article
         for article in ["der", "die", "das", "No Article"]:
@@ -107,6 +109,7 @@ def create_or_load_excel():
             ws.append(["Word", "Definition"])
             for col in range(1, 3):
                 ws.cell(row=1, column=col).font = bold_font
+                ws.cell(row=1, column=col).alignment = alignment_center
 
         wb.save(EXCEL_FILE)
     return wb
@@ -124,13 +127,15 @@ def check_duplicate(word, definition, wb):
 
 def create_lesson_sheet(wb, lesson):
     """Creates a new lesson sheet if it doesn't exist."""
-    lesson_sheet_name = f"Lesson {lesson}"
+    lesson_sheet_name = f"A1.1 - L{lesson}"
     if lesson_sheet_name not in wb.sheetnames:
         lesson_ws = wb.create_sheet(title=lesson_sheet_name)
         lesson_ws.append(["Word", "Definition"])
-        bold_font = Font(bold=True)
+        bold_font = Font(bold=True, size=16)
+        alignment_center = Alignment(horizontal="center", vertical="center")
         for col in range(1, 3):
             lesson_ws.cell(row=1, column=col).font = bold_font
+            lesson_ws.cell(row=1, column=col).alignment = alignment_center
     else:
         lesson_ws = wb[lesson_sheet_name]
     return lesson_ws
