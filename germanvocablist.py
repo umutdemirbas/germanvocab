@@ -20,6 +20,15 @@ ARTICLE_COLORS = {
     "": "8B4513"      # Brown for no article
 }
 
+TERMINAL_COLORS = {
+    "der": "\033[1;34m",  # Blue
+    "die": "\033[1;31m",  # Red
+    "das": "\033[1;32m",  # Green
+    "": "\033[38;2;165;42;42m"      # Brown for no article
+}
+
+RESET = "\033[0m"
+
 EXCEL_FILE = "German_Words.xlsx"
 
 
@@ -54,7 +63,6 @@ def get_word_data(word):
                 
         definitions = list(dict.fromkeys(definitions))  # Remove duplicates
 
-
         if not definitions:
             return article, ""
 
@@ -63,8 +71,16 @@ def get_word_data(word):
         for i, definition in enumerate(definitions, start=1):
             print(f"{i}. {definition}")
 
-        choice = int(input("Select the appropriate definition (enter the number): ").strip())
-        selected_definition = definitions[choice - 1] if 0 < choice <= len(definitions) else definitions[0]
+        while True:
+            try:
+                choice = int(input("Select the appropriate definition (enter the number): ").strip())
+                if 0 < choice <= len(definitions):
+                    selected_definition = definitions[choice - 1]
+                    break
+                else:
+                    print("Invalid choice: Please enter a number within the range.")
+            except ValueError:
+                print("Invalid input: Please enter a number for the definition choice.")
 
         return article, selected_definition
     except AttributeError:
@@ -96,13 +112,13 @@ def create_or_load_excel():
     return wb
 
 
-def check_duplicate(word, wb):
+def check_duplicate(word, definition, wb):
     """Checks if a word already exists in the Excel file."""
     for sheet in wb.sheetnames:
         ws = wb[sheet]
         for row in ws.iter_rows(min_row=2, values_only=True):
-            if row[0].lower() == word.lower():
-                return row[0], row[1]  # Return article and definition
+            if row[0].lower() == word.lower() and row[1].lower() == definition.lower():
+                return row[0], row[1]  # Return word and definition
     return None, None
 
 
@@ -140,13 +156,16 @@ def add_word_to_sheet(ws, full_word, definition):
 def add_word_to_excel(word, article, definition, lesson, wb):
     """Adds a word to the general sheet, the relevant article sheet, and the relevant lesson sheet in the Excel file."""      
     # Combine the article and word
-    real_article = ARTICLE_CONV.get(article) 
+    real_article = ARTICLE_CONV.get(article)
     full_word = f"{real_article} {word}"
 
+    # Color the terminal output based on the article
+    terminal_color = TERMINAL_COLORS.get(real_article, RESET)
+
     # Check for duplicates in the general sheet
-    existing_article, existing_definition = check_duplicate(full_word, wb)
-    if existing_article:
-        print(f"⚠️ '{word}' already exists! ({existing_article}) - {existing_definition}")
+    existing_word, existing_definition = check_duplicate(full_word, definition, wb)
+    if existing_word:        
+        print(f"⚠️ The word already exists! {terminal_color}{existing_word}{RESET} : {existing_definition}")
         return
 
     # Add the word to the general sheet
@@ -154,7 +173,8 @@ def add_word_to_excel(word, article, definition, lesson, wb):
     add_word_to_sheet(general_ws, full_word, definition)
 
     # Add the word to the relevant article sheet
-    article_ws = wb[real_article]
+    article_sheet_name = real_article if real_article else "No Article"
+    article_ws = wb[article_sheet_name]
     add_word_to_sheet(article_ws, full_word, definition)
 
     # Add the word to the relevant lesson sheet
@@ -162,7 +182,7 @@ def add_word_to_excel(word, article, definition, lesson, wb):
     add_word_to_sheet(lesson_ws, full_word, definition)
 
     wb.save(EXCEL_FILE)
-    print(f"✅ Added '{full_word}' - {definition} under lesson {lesson}.")
+    print(f"✅ Added '{terminal_color}{full_word}{RESET}' : {definition}.")
 
 
 if __name__ == "__main__":
@@ -178,5 +198,11 @@ if __name__ == "__main__":
             print("Skipping word due to missing data.")
             continue
 
-        lesson = int(input("Which lesson did you learn this word in? ").strip())
+        while True:
+            try:
+                lesson = int(input("Which lesson did you learn this word in? ").strip())
+                break
+            except ValueError:
+                print("Invalid input: Please enter a number for the lesson.")
+        
         add_word_to_excel(word, article, definition, lesson, wb)
