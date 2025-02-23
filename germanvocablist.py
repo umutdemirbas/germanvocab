@@ -27,9 +27,11 @@ TERMINAL_COLORS = {
     "": "\033[38;2;165;42;42m"      # Brown for no article
 }
 
+YELLOW = "\033[1;33m"
+MAGENTA = "\033[1;35m"
 RESET = "\033[0m"
 
-EXCEL_FILE = "German_Words.xlsx"
+EXCEL_FILE = "German Words.xlsx"
 
 
 def get_word_data(word):
@@ -45,8 +47,39 @@ def get_word_data(word):
 
     # Try to extract the article and definitions
     try:
-        article_tag = soup.find("span", class_="genus")
-        article = article_tag.text.strip() if article_tag else ""
+        # Extract word classes and articles
+        wordclass_tags = soup.find_all("span", class_="wordclass")
+        word_classes = []
+        for tag in wordclass_tags:
+            word_class = tag.text.strip()
+            article_tag = tag.find_next_sibling("span", class_="genus")
+            article = article_tag.text.strip() if article_tag else ""
+            word_classes.append((word_class, article))
+        word_classes = list(dict.fromkeys(word_classes))  # Remove duplicates
+
+        is_verb = False
+        if len(word_classes) > 1 and any(wc in ["N", "VB"] for wc, _ in word_classes):
+            print("Multiple word classes found:")
+            print(f"{YELLOW}1.{RESET} Noun")
+            print(f"{YELLOW}2.{RESET} Verb")
+            print(f"{YELLOW}3.{RESET} Other")
+            while True:
+                try:
+                    choice = int(input("Select the appropriate word class (enter the number): ").strip())
+                    if choice == 1:
+                        article = next((a for wc, a in word_classes if wc == "N"), "")
+                        break
+                    elif choice == 2:
+                        article = ""
+                        is_verb = True
+                        break
+                    elif choice == 3:
+                        article = ""
+                        break
+                    else:
+                        print("Invalid choice: Please enter 1, 2, or 3.")
+                except ValueError:
+                    print("Invalid input: Please enter a number for the word class choice.")
 
         # Exclude "seealso" sections
         seealso_sections = soup.find_all("div", class_="seealso")
@@ -56,36 +89,51 @@ def get_word_data(word):
         definition_tags = soup.find_all("div", class_="translations")
         definitions = []
         for tag in definition_tags:
-            target_tag = tag.find_all("div", class_="target", limit=2)
-            for target in target_tag:
-                definition = target.get_text().strip()
+            target_tags = tag.find_all("div", class_="target", limit=2)
+            for target in target_tags:
+                # Remove span elements with the "info" class
+                for span in target.find_all("span", class_="info"):
+                    span.decompose()
+                definition = " ".join(target.stripped_strings)
                 definitions.append(definition)
                 
         definitions = list(dict.fromkeys(definitions))  # Remove duplicates
 
         if not definitions:
-            return article, ""
+            return article, "", is_verb
 
         # Allow user to select the appropriate definition
-        print("Multiple definitions found:")
-        for i, definition in enumerate(definitions, start=1):
-            print(f"{i}. {definition}")
-
+        print("Choose the appropriate definition:")
+        index = 0
         while True:
-            try:
-                choice = int(input("Select the appropriate definition (enter the number): ").strip())
+            for i, definition in enumerate(definitions[index:index+10], start=index+1):
+                print(f"{YELLOW}{i}.{RESET} {definition}")
+            print(f"{MAGENTA}a.{RESET} Add your own definition")
+            print(f"{MAGENTA}m.{RESET} Show more definitions")
+
+            choice = input("Select the appropriate definition (enter the number or key): ").strip().lower()
+            if choice.isdigit():
+                choice = int(choice)
                 if 0 < choice <= len(definitions):
                     selected_definition = definitions[choice - 1]
                     break
                 else:
-                    print("Invalid choice: Please enter a number within the range.")
-            except ValueError:
-                print("Invalid input: Please enter a number for the definition choice.")
+                    print("Invalid choice: Please enter a valid number.")
+            elif choice == 'a':
+                selected_definition = input("Enter your custom definition: ").strip()
+                break
+            elif choice == 'm':
+                index += 10
+                if index >= len(definitions):
+                    print("No more definitions available.")
+                    index = 0
+            else:
+                print("Invalid input: Please enter a valid number or key.")
 
-        return article, selected_definition
+        return article, selected_definition, is_verb
     except AttributeError:
         print("Warning: Could not determine the article or definitions.")
-        return "", ""
+        return "", "", False
 
 
 def create_or_load_excel():
@@ -148,8 +196,8 @@ def sort_and_color_sheet(ws):
         for col, value in enumerate(row, start=1):
             ws.cell(row=idx, column=col, value=value)
             if col == 1:  # Apply color to the word cell
-                checked_article = value.split(" ", 1)[0]
-                color = ARTICLE_COLORS.get(checked_article)
+                checked_article = value.split(" ", 1)[0] if " " in value else ""
+                color = ARTICLE_COLORS.get(checked_article, ARTICLE_COLORS[""])
                 ws.cell(row=idx, column=col).fill = PatternFill(start_color=color, end_color=color, fill_type="solid")
                 ws.cell(row=idx, column=col).font = Font(color="FFFFFF", bold=True)
 
@@ -159,10 +207,18 @@ def add_word_to_sheet(ws, full_word, definition):
     sort_and_color_sheet(ws)
 
 def add_word_to_excel(word, article, definition, lesson, wb):
-    """Adds a word to the general sheet, the relevant article sheet, and the relevant lesson sheet in the Excel file."""      
+    """Adds a word to the general sheet, the relevant article sheet, and the relevant lesson sheet in the Excel file."""  
+    
     # Combine the article and word
     real_article = ARTICLE_CONV.get(article)
-    full_word = f"{real_article} {word}"
+
+    # Capitalize the word based on its type
+    if real_article:
+        word = word.capitalize()
+    else:
+        word = word.lower()
+        
+    full_word = f"{real_article} {word}".strip()
 
     # Color the terminal output based on the article
     terminal_color = TERMINAL_COLORS.get(real_article, RESET)
@@ -198,7 +254,7 @@ if __name__ == "__main__":
         if word == "q":
             break
 
-        article, definition = get_word_data(word)
+        article, definition, is_verb = get_word_data(word)
         if not definition:
             print("Skipping word due to missing data.")
             continue
