@@ -34,7 +34,6 @@ RESET = "\033[0m"
 
 EXCEL_FILE = "German Words.xlsx"
 
-
 def get_word_data(word):
     """Fetches the article and definitions of a word from PONS."""
     url = f"https://en.pons.com/translate/german-english/{word.lower()}"
@@ -46,16 +45,16 @@ def get_word_data(word):
 
     soup = BeautifulSoup(response.text, "html.parser")
 
-    # Try to extract the article and definitions
     try:
-        # Extract word classes and articles
+        article = ""  # Initialize article variable
         wordclass_tags = soup.find_all("span", class_="wordclass")
         word_classes = []
         for tag in wordclass_tags:
             word_class = tag.text.strip()
-            article_tag = tag.find_next_sibling("span", class_="genus")
-            article = article_tag.text.strip() if article_tag else ""
-            word_classes.append((word_class, article))
+            if word_class.lower() != "phrase":  # Exclude "phrases" class
+                article_tag = tag.find_next_sibling("span", class_="genus")
+                article = article_tag.text.strip() if article_tag else ""            
+                word_classes.append((word_class, article))
         word_classes = list(dict.fromkeys(word_classes))  # Remove duplicates
 
         is_verb = False
@@ -139,7 +138,6 @@ def get_word_data(word):
         print("Warning: Could not determine the article or definitions.")
         return "", "", False
 
-
 def get_verb_conjugations(verb):
     """Fetches the conjugations for Indikativ Präsens from PONS."""
     url = f"https://en.pons.com/verb-tables/german/{verb.lower()}"
@@ -177,7 +175,6 @@ def get_verb_conjugations(verb):
         print("Warning: Could not determine the conjugations.")
         return None
 
-
 def create_or_load_excel():
     """Creates a new Excel file if it doesn't exist, otherwise loads it."""
     if os.path.exists(EXCEL_FILE):
@@ -204,7 +201,6 @@ def create_or_load_excel():
         wb.save(EXCEL_FILE)
     return wb
 
-
 def check_duplicate(word, definition, wb):
     """Checks if a word already exists in the Excel file."""
     for sheet in wb.sheetnames:
@@ -213,7 +209,6 @@ def check_duplicate(word, definition, wb):
             if row[0].lower() == word.lower() and row[1].lower() == definition.lower():
                 return row[0], row[1]  # Return word and definition
     return None, None
-
 
 def create_lesson_sheet(wb, lesson):
     """Creates a new lesson sheet if it doesn't exist."""
@@ -230,7 +225,6 @@ def create_lesson_sheet(wb, lesson):
         lesson_ws = wb[lesson_sheet_name]
     return lesson_ws
 
-
 def create_verbs_sheet(wb):
     """Creates a new verbs sheet if it doesn't exist."""
     if "Verbs" not in wb.sheetnames:
@@ -245,7 +239,6 @@ def create_verbs_sheet(wb):
         verbs_ws = wb["Verbs"]
     return verbs_ws
 
-
 def sort_and_color_sheet(ws):
     """Sorts the sheet alphabetically by the word itself, ignoring the articles, and optionally changes the colors."""
     data = list(ws.iter_rows(min_row=2, values_only=True))
@@ -259,12 +252,10 @@ def sort_and_color_sheet(ws):
                 ws.cell(row=idx, column=col).fill = PatternFill(start_color=color, end_color=color, fill_type="solid")
                 ws.cell(row=idx, column=col).font = Font(color="FFFFFF", bold=True)
 
-
 def add_word_to_sheet(ws, full_word, definition):
     """Adds a word to a specific sheet and sorts it."""
     ws.append([full_word, definition])
     sort_and_color_sheet(ws)
-
 
 def add_verb_to_sheet(ws, verb, definition, conjugations):
     """Adds a verb to the verbs sheet with its conjugations."""
@@ -274,7 +265,6 @@ def add_verb_to_sheet(ws, verb, definition, conjugations):
             if col == 1:  # Apply purple color to the verb cell
                 ws.cell(row=idx, column=col).fill = PatternFill(start_color=ARTICLE_COLORS["verb"], end_color=ARTICLE_COLORS["verb"], fill_type="solid")
                 ws.cell(row=idx, column=col).font = Font(color="FFFFFF", bold=True)
-
 
 def add_word_to_excel(word, article, definition, lesson, wb):
     """Adds a word to the general sheet, the relevant article sheet, and the relevant lesson sheet in the Excel file."""  
@@ -321,7 +311,6 @@ def add_word_to_excel(word, article, definition, lesson, wb):
 
     wb.save(EXCEL_FILE)
     print(f"✅ Added '{terminal_color}{full_word}{RESET}' : {definition}.")
-
 
 if __name__ == "__main__":
     wb = create_or_load_excel()
