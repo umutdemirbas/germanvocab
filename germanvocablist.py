@@ -17,7 +17,8 @@ ARTICLE_COLORS = {
     "der": "0000FF",  # Blue
     "die": "FF0000",  # Red
     "das": "008000",  # Green
-    "": "8B4513"      # Brown for no article
+    "": "8B4513",     # Brown for no article
+    "verb": "800080"  # Purple for verbs
 }
 
 TERMINAL_COLORS = {
@@ -80,6 +81,9 @@ def get_word_data(word):
                         print("Invalid choice: Please enter 1, 2, or 3.")
                 except ValueError:
                     print("Invalid input: Please enter a number for the word class choice.")
+        elif any(wc in ["VB"] for wc, _ in word_classes):
+            is_verb = True
+
 
         # Exclude "seealso" sections
         seealso_sections = soup.find_all("div", class_="seealso")
@@ -136,6 +140,44 @@ def get_word_data(word):
         return "", "", False
 
 
+def get_verb_conjugations(verb):
+    """Fetches the conjugations for Indikativ Präsens from PONS."""
+    url = f"https://en.pons.com/verb-tables/german/{verb.lower()}"
+    response = requests.get(url)
+    
+    if response.status_code != 200:
+        print("Error: Unable to fetch conjugations from PONS.")
+        return None
+
+    soup = BeautifulSoup(response.text, "html.parser")
+    conjugations = {}
+
+    try:
+        table = soup.find("table", class_="table")
+        rows = table.find_all("tr")
+        for row in rows:
+            cols = row.find_all("td")
+            if len(cols) == 2:
+                person = cols[0].text.strip()
+                conjugation = cols[1].text.strip()
+                if "ich" in person:
+                    conjugations["ich"] = conjugation
+                elif "du" in person:
+                    conjugations["du"] = conjugation
+                elif "er/sie/es" in person:
+                    conjugations["er/sie/es"] = conjugation
+                elif "wir" in person:
+                    conjugations["wir"] = conjugation
+                elif "ihr" in person:
+                    conjugations["ihr"] = conjugation
+                elif "sie" in person:
+                    conjugations["sie/Sie"] = conjugation
+        return conjugations
+    except AttributeError:
+        print("Warning: Could not determine the conjugations.")
+        return None
+
+
 def create_or_load_excel():
     """Creates a new Excel file if it doesn't exist, otherwise loads it."""
     if os.path.exists(EXCEL_FILE):
@@ -188,6 +230,22 @@ def create_lesson_sheet(wb, lesson):
         lesson_ws = wb[lesson_sheet_name]
     return lesson_ws
 
+
+def create_verbs_sheet(wb):
+    """Creates a new verbs sheet if it doesn't exist."""
+    if "Verbs" not in wb.sheetnames:
+        verbs_ws = wb.create_sheet(title="Verbs")
+        verbs_ws.append(["Verb", "Definition", "ich", "du", "er/sie/es", "wir", "ihr", "sie/Sie"])
+        bold_font = Font(bold=True, size=14)
+        alignment_center = Alignment(horizontal="center", vertical="center")
+        for col in range(1, 9):
+            verbs_ws.cell(row=1, column=col).font = bold_font
+            verbs_ws.cell(row=1, column=col).alignment = alignment_center
+    else:
+        verbs_ws = wb["Verbs"]
+    return verbs_ws
+
+
 def sort_and_color_sheet(ws):
     """Sorts the sheet alphabetically by the word itself, ignoring the articles, and optionally changes the colors."""
     data = list(ws.iter_rows(min_row=2, values_only=True))
@@ -201,10 +259,22 @@ def sort_and_color_sheet(ws):
                 ws.cell(row=idx, column=col).fill = PatternFill(start_color=color, end_color=color, fill_type="solid")
                 ws.cell(row=idx, column=col).font = Font(color="FFFFFF", bold=True)
 
+
 def add_word_to_sheet(ws, full_word, definition):
     """Adds a word to a specific sheet and sorts it."""
     ws.append([full_word, definition])
     sort_and_color_sheet(ws)
+
+
+def add_verb_to_sheet(ws, verb, definition, conjugations):
+    """Adds a verb to the verbs sheet with its conjugations."""
+    ws.append([verb, definition, conjugations.get("ich"), conjugations.get("du"), conjugations.get("er/sie/es"), conjugations.get("wir"), conjugations.get("ihr"), conjugations.get("sie/Sie")])
+    for idx, row in enumerate(ws.iter_rows(min_row=2, max_row=ws.max_row, values_only=True), start=2):
+        for col, value in enumerate(row, start=1):
+            if col == 1:  # Apply purple color to the verb cell
+                ws.cell(row=idx, column=col).fill = PatternFill(start_color=ARTICLE_COLORS["verb"], end_color=ARTICLE_COLORS["verb"], fill_type="solid")
+                ws.cell(row=idx, column=col).font = Font(color="FFFFFF", bold=True)
+
 
 def add_word_to_excel(word, article, definition, lesson, wb):
     """Adds a word to the general sheet, the relevant article sheet, and the relevant lesson sheet in the Excel file."""  
@@ -229,18 +299,25 @@ def add_word_to_excel(word, article, definition, lesson, wb):
         print(f"⚠️ The word already exists! {terminal_color}{existing_word}{RESET} : {existing_definition}")
         return
 
-    # Add the word to the general sheet
-    general_ws = wb["General"]
-    add_word_to_sheet(general_ws, full_word, definition)
+    # Add the word to the relevant article sheet if it's not a verb
+    if not is_verb:
+        general_ws = wb["General"]
+        add_word_to_sheet(general_ws, full_word, definition)
 
-    # Add the word to the relevant article sheet
-    article_sheet_name = real_article if real_article else "No Article"
-    article_ws = wb[article_sheet_name]
-    add_word_to_sheet(article_ws, full_word, definition)
+        article_sheet_name = real_article if real_article else "No Article"
+        article_ws = wb[article_sheet_name]
+        add_word_to_sheet(article_ws, full_word, definition)
 
     # Add the word to the relevant lesson sheet
     lesson_ws = create_lesson_sheet(wb, lesson)
     add_word_to_sheet(lesson_ws, full_word, definition)
+
+    # If the word is a verb, add it to the verbs sheet with conjugations
+    if is_verb:
+        verbs_ws = create_verbs_sheet(wb)
+        conjugations = get_verb_conjugations(word)
+        if conjugations:
+            add_verb_to_sheet(verbs_ws, word, definition, conjugations)
 
     wb.save(EXCEL_FILE)
     print(f"✅ Added '{terminal_color}{full_word}{RESET}' : {definition}.")
